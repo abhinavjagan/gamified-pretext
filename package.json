@@ -1,0 +1,18 @@
+{
+  "name": "pretext-motion",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "bash scripts/start.sh",
+    "start:lan": "HOST=0.0.0.0 bash scripts/start.sh",
+    "build:client": "bun build ./pages/app.ts --outdir ./pages/build --target=browser --format=esm",
+    "watch:client": "bun build ./pages/app.ts --outdir ./pages/build --target=browser --format=esm --watch",
+    "sprite:cutout": "python3 scripts/sheet-remove-bg.py pages/sprites/flame-runner.png pages/sprites/flame-runner.png",
+    "check": "tsc"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "typescript": "6.0.2"
+  }
+}

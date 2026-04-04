@@ -1,0 +1,303 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Type drift — depth run</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --paper: #060708;
+        --ink: #e8e4dc;
+        --hud: #c5f25a;
+        --hud-dim: rgba(197, 242, 90, 0.35);
+        --entropy-warn: #ff9a4d;
+        --entropy-bad: #ff5c6c;
+        --anchor: #7ae8ff;
+        --arena-top: 88px;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+        background: var(--paper);
+        color: var(--ink);
+        overflow: hidden;
+      }
+
+      #hud {
+        position: fixed;
+        left: 0;
+        right: 0;
+        top: 0;
+        z-index: 30;
+        padding: 8px 16px 10px;
+        pointer-events: none;
+        background: linear-gradient(180deg, rgba(6, 7, 8, 0.98) 0%, rgba(6, 7, 8, 0.88) 85%, transparent 100%);
+        border-bottom: 1px solid rgba(197, 242, 90, 0.08);
+      }
+
+      .hud-grid {
+        display: grid;
+        grid-template-columns: repeat(7, 1fr);
+        gap: 6px 10px;
+        align-items: end;
+        max-width: 1280px;
+        margin: 0 auto;
+      }
+
+      @media (max-width: 900px) {
+        .hud-grid {
+          grid-template-columns: repeat(2, 1fr);
+        }
+        :root {
+          --arena-top: 96px;
+        }
+      }
+
+      .hud-block {
+        display: flex;
+        flex-direction: column;
+        gap: 1px;
+      }
+
+      .hud-label {
+        font: 9px/1 'Jersey 10', monospace;
+        letter-spacing: 0.12em;
+        color: var(--hud-dim);
+        text-transform: uppercase;
+      }
+
+      .hud-val {
+        font: 22px/1 'Jersey 10', monospace;
+        color: var(--hud);
+        text-shadow: 0 0 18px rgba(197, 242, 90, 0.2);
+      }
+
+      .hud-val--sm {
+        font-size: 15px;
+        color: rgba(232, 228, 220, 0.88);
+      }
+
+      .hud-meta {
+        grid-column: 1 / -1;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px 20px;
+        margin-top: 6px;
+        font: 11px/1.35 'Jersey 10', monospace;
+        color: rgba(232, 228, 220, 0.45);
+      }
+
+      .hud-meta strong {
+        color: rgba(197, 242, 90, 0.75);
+        font-weight: 400;
+      }
+
+      #toast {
+        position: fixed;
+        bottom: 14px;
+        left: 50%;
+        transform: translateX(-50%);
+        z-index: 40;
+        font: 14px/1.2 'Jersey 10', monospace;
+        color: rgba(255, 220, 160, 0.98);
+        text-align: center;
+        max-width: min(90vw, 520px);
+        pointer-events: none;
+        opacity: 0;
+        transition: opacity 0.18s ease;
+        text-shadow: 0 2px 12px #000;
+      }
+
+      #toast.on {
+        opacity: 1;
+      }
+
+      #arena {
+        position: fixed;
+        left: 0;
+        right: 0;
+        top: var(--arena-top);
+        bottom: 0;
+        cursor: none;
+        touch-action: none;
+      }
+
+      .runners {
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+        /* Above .lines so sprite characters stay visible on top of Bodoni */
+        z-index: 3;
+        overflow: hidden;
+      }
+
+      .runner {
+        position: absolute;
+        left: 0;
+        top: 0;
+        background-repeat: no-repeat;
+        image-rendering: -webkit-optimize-contrast;
+        image-rendering: crisp-edges;
+        will-change: transform, background-position;
+        mix-blend-mode: normal;
+        opacity: 1;
+        filter: drop-shadow(0 0 12px rgba(255, 180, 70, 0.4));
+        transition: filter 0.2s ease;
+      }
+
+      .runner.runner--on-gold {
+        filter: drop-shadow(0 0 18px rgba(255, 220, 120, 0.85)) drop-shadow(0 0 28px rgba(255, 210, 90, 0.35));
+      }
+
+      .lines {
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+        z-index: 1;
+        transition: filter 0.4s ease;
+      }
+
+      .line {
+        position: absolute;
+        margin: 0;
+        padding: 0 0 0 6px;
+        font: 500 17px/29px 'Bodoni Moda', 'Times New Roman', serif;
+        white-space: pre;
+        overflow: hidden;
+        max-width: 100%;
+        color: rgba(232, 228, 220, 0.9);
+        border-left: 3px solid transparent;
+        transition: border-color 0.15s ease, color 0.15s ease;
+      }
+
+      .line--hot {
+        border-left-color: rgba(255, 210, 120, 0.95);
+        color: rgba(255, 252, 245, 0.98);
+      }
+
+      .pins {
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+        z-index: 4;
+      }
+
+      .pin {
+        position: absolute;
+        width: 20px;
+        height: 20px;
+        margin: -10px 0 0 -10px;
+        transform: rotate(45deg);
+        border: 2px solid rgba(120, 200, 255, 0.75);
+        background: rgba(120, 200, 255, 0.1);
+        box-shadow: 0 0 14px rgba(120, 200, 255, 0.2);
+      }
+
+      .orb {
+        position: absolute;
+        width: 112px;
+        height: 112px;
+        margin: -56px 0 0 -56px;
+        border-radius: 50%;
+        border: 2px solid rgba(197, 242, 90, 0.45);
+        background: radial-gradient(circle, rgba(197, 242, 90, 0.08) 0%, transparent 65%);
+        pointer-events: none;
+        z-index: 5;
+        opacity: 0;
+        transition: opacity 0.12s ease, width 0.25s ease, height 0.25s ease, margin 0.25s ease;
+      }
+
+      #arena.on .orb {
+        opacity: 1;
+      }
+
+      .snake-canvas {
+        position: absolute;
+        inset: 0;
+        z-index: 12;
+        pointer-events: none;
+        display: none;
+      }
+
+      #arena.snake-on .snake-canvas {
+        display: block;
+      }
+
+      #arena.snake-on .lines {
+        opacity: 0.42;
+      }
+
+      #arena.snake-on .runners,
+      #arena.snake-on .pins,
+      #arena.snake-on .orb {
+        opacity: 0.35;
+      }
+
+      @media (max-width: 720px) {
+        .line {
+          font-size: 14px;
+          line-height: 24px;
+        }
+        .orb {
+          width: 88px;
+          height: 88px;
+          margin: -44px 0 0 -44px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div id="hud">
+      <div class="hud-grid">
+        <div class="hud-block">
+          <span class="hud-label">Score</span>
+          <span id="gameScore" class="hud-val">0</span>
+        </div>
+        <div class="hud-block">
+          <span class="hud-label">Speed</span>
+          <span id="gameSpeed" class="hud-val hud-val--sm">0</span>
+        </div>
+        <div class="hud-block">
+          <span class="hud-label">Type</span>
+          <span id="gameType" class="hud-val hud-val--sm">—</span>
+        </div>
+        <div class="hud-block">
+          <span class="hud-label">Layer</span>
+          <span id="gameLayer" class="hud-val hud-val--sm">—</span>
+        </div>
+        <div class="hud-block">
+          <span class="hud-label">Gear</span>
+          <span id="gameGear" class="hud-val hud-val--sm">×1</span>
+        </div>
+        <div class="hud-block">
+          <span class="hud-label">Best</span>
+          <span id="gameBest" class="hud-val hud-val--sm">0</span>
+        </div>
+        <div class="hud-block">
+          <span class="hud-label">Pins</span>
+          <span id="pinCount" class="hud-val">0</span>
+        </div>
+      </div>
+      <div class="hud-meta">
+        <span><strong>Layer</strong>: hold the runner on the <strong>gold Bodoni row</strong> (charge → burst score) or <strong>linger near a pin</strong> (⌖) for a second rhythm—both scale with Gear. Move the mouse to steer the runner; type the gold line; <strong>`</strong> Snake, Esc exit. Right-click: pin (max 3).</span>
+      </div>
+    </div>
+    <div id="toast" aria-live="polite"></div>
+    <div id="arena" class="arena">
+      <div id="runners" class="runners" aria-hidden="true">
+        <div id="runner-a" class="runner"></div>
+      </div>
+      <div id="lines" class="lines"></div>
+      <div id="pins" class="pins"></div>
+      <div id="orb" class="orb"></div>
+      <canvas id="snake-canvas" class="snake-canvas" width="300" height="300" aria-hidden="true"></canvas>
+    </div>
+    <script type="module" src="/build/app.js"></script>
+  </body>
+</html>
